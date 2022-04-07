@@ -25,7 +25,8 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
-  { "backtrace", "Displays a stack backtrace", mon_backtrace }
+  { "backtrace", "Displays a stack backtrace", mon_backtrace },
+  { "show", "Displays a pretty ASCII art", mon_show }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -38,6 +39,17 @@ mon_help(int argc, char **argv, struct Trapframe *tf)
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
 		cprintf("%s - %s\n", commands[i].name, commands[i].desc);
 	return 0;
+}
+
+
+int
+mon_show(int argc, char** argv, struct Trapframe *tf){
+  cprintf("\e[0;31mJOS in color mode\n");
+  cprintf("\e[0;32mJOS in color mode\n");
+  cprintf("\e[0;33mJOS in color mode\n");
+  cprintf("\e[0;34mJOS in color mode\n");
+  cprintf("\e[0;35mJOS in color mode\e[0;37m\n");
+  return 0;
 }
 
 int

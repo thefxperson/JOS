@@ -433,8 +433,8 @@ static void
 cons_putc(int c)
 {
 	serial_putc(c);
-	lpt_putc(c);
-	cga_putc(c);
+  lpt_putc(c);
+  cga_putc(c);
 }
 
 // initialize the console devices
