@@ -25,6 +25,8 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+  { "backtrace", "Displays a stack backtrace", mon_backtrace },
+  { "show", "Displays a pretty ASCII art", mon_show }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -37,6 +39,17 @@ mon_help(int argc, char **argv, struct Trapframe *tf)
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
 		cprintf("%s - %s\n", commands[i].name, commands[i].desc);
 	return 0;
+}
+
+
+int
+mon_show(int argc, char** argv, struct Trapframe *tf){
+  cprintf("\e[0;31mJOS in color mode\n");
+  cprintf("\e[0;32mJOS in color mode\n");
+  cprintf("\e[0;33mJOS in color mode\n");
+  cprintf("\e[0;34mJOS in color mode\n");
+  cprintf("\e[0;35mJOS in color mode\e[0;37m\n");
+  return 0;
 }
 
 int
@@ -58,9 +71,32 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// LAB 1: Your code here.
-    // HINT 1: use read_ebp().
-    // HINT 2: print the current ebp on the first line (not current_ebp[0])
+  // get current base pointer
+  uint32_t* ebp = (uint32_t*)read_ebp();
+
+  cprintf("Stack backtrace:\n");
+  while(ebp != 0){
+    // search for EIP symbols for debug info
+    struct Eipdebuginfo eip_symbols;
+    debuginfo_eip((uintptr_t)ebp[1], &eip_symbols);
+    
+    // print stack memory addresses
+    cprintf("  ebp %08x eip %08x args %08x %08x %08x %08x %08x\n", ebp, ebp[1], ebp[2], ebp[3], ebp[4], ebp[5], ebp[6]);
+    
+    // display EIP debug info
+
+    // first remove garbage from end of fn name string
+    char fn_name_trunc[eip_symbols.eip_fn_namelen+1];
+    for(int i = 0; i < eip_symbols.eip_fn_namelen; i++){
+      fn_name_trunc[i] = (char)eip_symbols.eip_fn_name[i];
+    }
+    fn_name_trunc[eip_symbols.eip_fn_namelen] = '\0';
+
+    cprintf("         %s:%d: %s+%u\n", eip_symbols.eip_file, eip_symbols.eip_line, fn_name_trunc, ebp[1]-eip_symbols.eip_fn_addr);
+
+    // read next ebp
+    ebp = (uint32_t*)ebp[0];
+  }
 	return 0;
 }
 
