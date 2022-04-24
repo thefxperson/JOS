@@ -1,0 +1,50 @@
+Question 1:
+The type should be uintptr_t. This refers to a virtual address, which any ctype pointer also refers to. You need to cast because uintptr_t is an alias for an integer, and not a ptr type.
+
+Question 2:
+Entry | Base Virtual Address | Points to...
+-------------------------------------------
+1023  | 0xffc00000           | Top 4MB of physical mem
+  ^   |      ^               |      ^
+  |   |      |               |      |
+  |   |      |               |      |
+ 961  | 0xf0400000           | Kernel mapping of remaining phys mem*
+ 960  | 0xf0000000           | First 4MB of physical mem -> kernel lives here
+ 959  | 0x3fc00000           | kernel stack
+ 956  | 0xef000000           | "pages" array of physical pages (R/O user) 
+   0  | 0x00000000           | First 4MB of physical mem... also where kern lives
+
+* note: in kern/pmap.c:mem_init(), we remap all remaining physical mem to kern addresss 0xf0000000->0xffffffff. Eventually, our page directory becomes full and we no longer have access to physical mem.
+
+Question 3:
+Despite the kernel and user memory being mapped to the same physical space, they will not interact due to access level (last two bits of %cs register) and CPU memory access checking. This involves the segmentation register, as well as permission flags on the page directory and page tables.
+
+Question 4:
+This paging scheme can support 1024 page tables, each with 1024 pages, each with 4096 bytes of memory.
+Thus, the OS could support 1024*1024*4096 = 4GB of memory
+
+However, JOS is only set up to handle 256 MB of memory. This is because the kernel is mapped at address 0xf0000000, with PGDIR entry 960. Because the top of the page table is entry 1023, there is 1023-960 = 63 (+1 because of indexing weirdness) = 64 page tables of mapped physical memory. 
+This means that JOS can support 64*1024*4096 = 256 MB of memory.
+
+Question 5:
+Overhead, if we had 256 MB of memory:
+64 page tables + 1 page directory = 65 PTs.
+Each Page Table Entry is 32 bits = 4 bytes. One page table holds 1024 entries, so 1 PT = 4096 bytes
+Thus, one PT requires one page of memory. 65 PT * 4096 bytes = 260 KB for page dir/page tables.
+
+We also keep track of physical pages, and free pages.
+We maintain a list of struct PageInfo, which has a memory address (32 bits = 4 bytes) and a short (16 bits = 2 bytes).While memory allocated for a struct depends on compiler, C standard, and system, it is likely that each of these structs is 8 bytes. When booting, we allocated 32768 pages, for a total size of 32768 * 8 bytes = 256 KB.
+
+While there is some slight other memory overhead in terms of pointers (page_free_list), and constants, it is negligible compared to these two objects.
+
+Thus, the total memory overhead for our 256 MB of memory is:
+260 + 256 = 516 KB of memory.
+
+Question 6:
+Paging is enabled after the static page directory is loaded, on line 62 of kern/entry.S. However, we don't begin executing at a high address until line 67..
+66: mov $relocated, %eax
+67: jmp *%eax
+
+The asm tag relocated is assembled in a high address space. 
+
+This works because in entrypgdir.c, we create two mappings in the pgdir. Both map physical addresses [0, 4MB), but to different virtual addresses. The first mapping is from VAs [0, 4MB), and the second is from VAs [0xf0000000, 0xf0400000). Because both of these are mapped to the same physical address, the CPU is able to seamlessly transition from running in a low address to running at a high address.
