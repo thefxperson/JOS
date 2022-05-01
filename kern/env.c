@@ -119,6 +119,14 @@ env_init(void)
 {
 	// Set up envs array
 	// LAB 3: Your code here.
+  env_free_list = envs;
+  for(int i = 1; i < NENV; i++){
+    envs[i-1].env_id = 0;
+    envs[i-1].env_link = &envs[i];
+  }
+  envs[NENV-1].env_id = 0;
+  envs[NENV-1].env_link = NULL;
+
 
 	// Per-CPU part of the initialization
 	env_init_percpu();
@@ -182,6 +190,16 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 3: Your code here.
+  e->env_pgdir = page2kva(p);
+  memset(e->env_pgdir, 0, PGSIZE);
+  p->pp_ref++;
+
+  
+  // copy kern_pgdir mappings (ty yeongjin)
+  for(int i = PDX(UTOP); i < NPDENTRIES; ++i){
+    //e->env_pgdir[i] = (kern_pgdir[i] | PTE_U | PTE_P) & ~PTE_W;
+    e->env_pgdir[i] = kern_pgdir[i];
+  }
 
 	// UVPT maps the env's own page table read-only.
 	// Permissions: kernel R, user R
@@ -279,6 +297,25 @@ region_alloc(struct Env *e, void *va, size_t len)
 	//   'va' and 'len' values that are not page-aligned.
 	//   You should round va down, and round (va + len) up.
 	//   (Watch out for corner-cases!)
+  uint32_t lower_va = ROUNDDOWN((uint32_t) va, PGSIZE);
+  uint32_t upper_va = ROUNDUP((uint32_t)va + len, PGSIZE);
+  size_t full_len = upper_va - lower_va;
+
+  for(int i = 0; i*PGSIZE < full_len; i++){
+    // check if page already exists for this va. If so, do not alloc new
+    if(page_lookup(e->env_pgdir,(uint32_t*)(lower_va+(i*PGSIZE)), NULL))
+      continue;
+
+    // if not exists...
+    struct PageInfo* pp = page_alloc(0);
+    if(pp == NULL)
+      panic("Failed to allocate in region_alloc");
+
+    // attempt to insert va -> page mapping in pgdir
+    if(page_insert(e->env_pgdir, pp,(uint32_t*) (lower_va+(i*PGSIZE)), PTE_U | PTE_W | PTE_P))
+      panic("Failed to allocate in region_alloc");    // no mem to alloc new PTE
+  }
+
 }
 
 //
@@ -335,11 +372,49 @@ load_icode(struct Env *e, uint8_t *binary)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here.
+  // ty yeongjin -- load env pgdir
+  uint32_t prev_cr3 = rcr3();
+  lcr3(PADDR(e->env_pgdir));
 
+  // begin loading elf
+  struct Elf *elf = (struct Elf*) binary;
+
+	// is this a valid ELF?
+	if (elf->e_magic != ELF_MAGIC)
+		panic("bad elf header in load_icode()");
+
+	// load each program segment
+	struct Proghdr* ph = (struct Proghdr *)((uint32_t)elf + elf->e_phoff);
+	struct Proghdr* eph = ph + elf->e_phnum;
+
+	for (; ph < eph; ph++){
+    // check if segment should be loaded
+    if(ph->p_type != ELF_PROG_LOAD)
+      continue;
+    
+    // load segment
+    region_alloc(e, (uint32_t*) ph->p_va, ph->p_memsz);
+
+    // copy segment to memory
+    memcpy((uint32_t*)ph->p_va, binary + ph->p_offset, ph->p_filesz);
+    memset((uint32_t*)(ph->p_va + ph->p_filesz), 0, ph->p_memsz-ph->p_filesz);
+
+  }
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
 	// LAB 3: Your code here.
+  struct PageInfo* pp = page_alloc(ALLOC_ZERO);
+  if(pp == NULL)
+    panic("No memory to alloc stack in load_icode");
+
+  page_insert(e->env_pgdir, pp, (uint32_t*)(USTACKTOP - PGSIZE), PTE_U | PTE_W | PTE_P);
+
+  // store entry point in env trapframe -> eip. rest will be zero
+  e->env_tf.tf_eip = elf->e_entry;
+
+  //ty yeongjin -- restore kernel pgdir
+  lcr3(prev_cr3);
 }
 
 //
@@ -353,6 +428,18 @@ void
 env_create(uint8_t *binary, enum EnvType type)
 {
 	// LAB 3: Your code here.
+  struct Env* new_env;
+  if(env_alloc(&new_env, 0))
+    panic("Failure to alloc environment in env_create");
+
+  // set env type
+  new_env->env_type = type;
+
+  // prepare env virtual memory
+  env_setup_vm(new_env);
+
+  // load elf binary
+  load_icode(new_env, binary);
 }
 
 //
@@ -483,7 +570,18 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
+  // step 1.1: 
+  if(curenv != NULL && curenv->env_status == ENV_RUNNING)// use short circuit &&
+    curenv->env_status = ENV_RUNNABLE;
 
-	panic("env_run not yet implemented");
+  // steps 1.2-1.5:
+  curenv = e;
+  e->env_status = ENV_RUNNING;
+  e->env_runs++;
+  lcr3(PADDR(e->env_pgdir));
+  
+  
+  // step 2:
+  env_pop_tf(&(e->env_tf));
 }
 
