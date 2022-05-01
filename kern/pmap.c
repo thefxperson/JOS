@@ -170,12 +170,13 @@ mem_init(void)
 	// Your code goes here:
   pages = boot_alloc(sizeof(struct PageInfo) * npages);
   memset(pages, 0, sizeof(struct PageInfo)*npages);
-  cprintf("npages: %d\n", npages);
 
 
 	//////////////////////////////////////////////////////////////////////
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
+  envs = boot_alloc(sizeof(struct Env) * NENV);
+  memset(envs, 0, sizeof(struct Env)*NENV);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -209,6 +210,13 @@ mem_init(void)
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
+  // map space for user environments
+  n = ROUNDUP(sizeof(struct Env) * NENV, PGSIZE);
+
+  // map user R/O at UENV
+  boot_map_region(kern_pgdir, UENVS, n, PADDR(envs), PTE_U | PTE_P);
+
+
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -235,6 +243,7 @@ mem_init(void)
   // same as 0x100000000 - (KERNBASE == 0xF0000000) = 0x10000000
   // then subtract one because not inclusive => 0x0FFFFFF = ~KERNBASE
   boot_map_region(kern_pgdir, KERNBASE, ~KERNBASE, 0, PTE_W | PTE_P);
+
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -606,6 +615,52 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+  struct PageInfo* pg_check;
+  pte_t* entry;
+  /*for(int i = 0; i < ROUNDUP(len, PGSIZE); i += PGSIZE){
+    pg_check = page_lookup(env->env_pgdir, (void*)((char*)va+i), &entry);
+
+    // if page doesn't exist....
+    if(pg_check == NULL){
+      user_mem_check_addr = ROUNDDOWN((uint32_t)((char*)va+i), PGSIZE);
+      return -E_FAULT;
+    }
+
+    // if va is not in user space...
+    if((uint32_t)((char*)va+i) >= ULIM){
+      user_mem_check_addr = ROUNDDOWN((uint32_t)((char*)va+i), PGSIZE);
+      return -E_FAULT;
+    }
+
+    // if PTE does not have user perms
+    if(!(*entry & (perm | PTE_P))){
+      user_mem_check_addr = ROUNDDOWN((uint32_t)((char*)va+i), PGSIZE);
+      return -E_FAULT;
+    }
+
+  }*/
+  for(int i = 0; i < len; i++){
+    pg_check = page_lookup(env->env_pgdir, (void*)((char*)va+i), &entry);
+
+    // if page doesn't exist....
+    if(pg_check == NULL){
+      user_mem_check_addr = (uint32_t)((char*)va+i);
+      return -E_FAULT;
+    }
+
+    // if va is not in user space...
+    if((uint32_t)((char*)va+i) >= ULIM){
+      user_mem_check_addr = (uint32_t)((char*)va+i);
+      return -E_FAULT;
+    }
+
+    // if PTE does not have user perms
+    if(!(*entry & (perm | PTE_P))){
+      user_mem_check_addr = (uint32_t)((char*)va+i);
+      return -E_FAULT;
+    }
+
+  }
 
 	return 0;
 }

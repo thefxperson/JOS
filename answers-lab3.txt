@@ -1,0 +1,13 @@
+Question 1:
+
+Having separate handlers for different interrupt types allows us to respond to different "problems" in different ways.
+Notably, this allows us to distinguish between "good" interrupts (i.e. system calls) and bad interrupts (divzero, ect). If we had a single handler, a system call would force the calling program to be terminated.
+
+Question 2:
+I did not. When registering the interrupt handlers with the IDT, I had already set PGFLT to privlege level 0, i.e. a user program cannot call a page fault. This means that if a program tries to raise a pgflt, instead it will be sent to the general interrupt handler. If we allow the user program to generate a page fault, they could request infinite memory and crash the system, or gain access to private data if there are other security exploits in the kernel.
+
+Question 3:
+As stated in question 2, the breakpoint exception needs to have privlege level 3 in the IDT, so user programs can trigger a breakpoint. If you restrict the privilege level to 0, then a user breakpoint would trigger a general protection fault.
+
+Question 4:
+This allows the kernel to provide protection against malicious (or incompetently-designed) user programs.
