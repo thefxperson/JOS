@@ -347,6 +347,8 @@ page_init(void)
       pages[i].pp_ref = 1;
     }else if(((i * PGSIZE) >= PADDR(end)) && ((i * PGSIZE) < PADDR(boot_alloc(0)))){ // 4) mark alloc'd pages as in use
       pages[i].pp_ref = 1;
+    }else if((i * PGSIZE) == MPENTRY_PADDR){
+      pages[i].pp_ref = 1;   // lab 4
     }else {
       // add page to front of page_free_list
       pages[i].pp_ref = 0;
@@ -657,7 +659,21 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+  // allign pa with page (ty yeongjin)
+  uint32_t pa_start = ROUNDDOWN(pa, PGSIZE);
+  uint32_t pa_end = ROUNDUP(pa+size, PGSIZE);
+  uint32_t pa_offset = pa & 0xFFF;        // last 12 bits of address
+
+  uint32_t new_base = base + pa_end - pa_start;
+
+  // verify mapping to valid region
+  if(pa_end > MMIOLIM)
+    panic("mmio_map_region: invalid map size");
+
+  //map
+  boot_map_region(kern_pgdir, new_base, (size_t)(pa_end-pa_start), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+	//panic("mmio_map_region not implemented");
+  return (void*)(base + pa_offset);
 }
 
 static uintptr_t user_mem_check_addr;
