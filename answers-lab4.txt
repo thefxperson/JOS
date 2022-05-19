@@ -1,0 +1,15 @@
+Question 1:
+
+As indicated in the comments in kern/mpentry.S, each multiprocessor boots in real mode initially. Because the inital processor is running at high addresses and has paging on, the MPs are also compiled and linked to run in these high address spaces. However, the MP processor boots in real mode, meaning it must use physical addresses until paging can be enabled and it can switch to a high address space. If this were not included, the MP would fail to run because it is trying to access addresses beyond the computer's physical memory, likely causing a segmentation fault.
+
+Question 2:
+
+One situation in which multiple kernel stacks are needed is exception handling. Imagine two user environments are running on two CPUs. The first one faults or makes a system call, and traps into the kernel. CPU 1's kernel now has the big kernel lock, and begins handling the exception/system call by reading from the kernel stack. While this is happening, CPU 2's user environment makes a system call, and pushes data onto the kernel stack before CPU 1 blocks without the big kernel lock. Now CPU 1's kernel stack is messed up, and it cannot properly handle user envrionment 1's exception properly. This is why multiple stacks are needed.
+
+Question 3:
+
+The list of environments is stored in the kernel's memory space. When creating a user environment, we mark the kernel's memory space as read only. This allows the environment e to continue to be accessed once the environment's page directory has been loaded by lcr3.
+
+Question 4:
+
+The registers must be saved because we are unsure what the previous environment was doing before the context switch. It could be in the middle of a computation, and expecting those registers to be unchanged (the OS should be invisible to the execution of a user program). In addition, the registers include that environment's EIP, which tells the processor which instruction to execute when the environment is later rescheduled and ran. The kernel stores this information in kern/trap.c:trap() where it grabs the trapframe (which includes registers) from the stack and stores it in the struct associated with the recently halted environment. On the user side, this occurs in kern/trapentry.S:_alltraps. When a interrupt occurs, all user environments will run this code which will store all registers in a set location so the kernel can save them for later.

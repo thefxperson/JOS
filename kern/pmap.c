@@ -297,6 +297,10 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
+  for(int i = 0; i < NCPU; i++){
+    boot_map_region(kern_pgdir, KSTACKTOP-(i*(KSTKSIZE+KSTKGAP))-KSTKSIZE, KSTKSIZE, PADDR(&percpu_kstacks[i]), PTE_W | PTE_P);
+    //boot_map_region(kern_pgdir, KSTACKTOP-(i*(KSTKSIZE+KSTKGAP)), KSTKSIZE, PADDR(&percpu_kstacks[i]), PTE_W | PTE_P);
+  }
 
 }
 
@@ -493,7 +497,8 @@ static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
 	// loop to fill entire size
-  for(int i = 0; i*PGSIZE <= size; i++){
+  for(int i = 0; i*PGSIZE < size; i++){
+  //for(int i = 0; i*PGSIZE <= size; i++){
     pte_t* p_pte = pgdir_walk(pgdir, (void*)va+(i*PGSIZE), 1);
     *p_pte = PTE_ADDR(pa+(i*PGSIZE)) | PTE_P | perm;
   }
@@ -660,20 +665,32 @@ mmio_map_region(physaddr_t pa, size_t size)
 	//
 	// Your code here:
   // allign pa with page (ty yeongjin)
+  //uint32_t pa_start = ROUNDDOWN(PADDR((void*)pa), PGSIZE);
+  //uint32_t pa_end = ROUNDUP(PADDR((void*)(pa+size)), PGSIZE);   
   uint32_t pa_start = ROUNDDOWN(pa, PGSIZE);
-  uint32_t pa_end = ROUNDUP(pa+size, PGSIZE);
+  uint32_t pa_end = ROUNDUP(pa+size, PGSIZE);   
   uint32_t pa_offset = pa & 0xFFF;        // last 12 bits of address
 
-  uint32_t new_base = base + pa_end - pa_start;
-
   // verify mapping to valid region
-  if(pa_end > MMIOLIM)
+  if(base + (pa_end - pa_start) > MMIOLIM)
     panic("mmio_map_region: invalid map size");
 
+  /*
   //map
-  boot_map_region(kern_pgdir, new_base, (size_t)(pa_end-pa_start), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
-	//panic("mmio_map_region not implemented");
-  return (void*)(base + pa_offset);
+  //boot_map_region(kern_pgdir, base, (size_t)(pa_end-pa_start), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+  boot_map_region(kern_pgdir, base, (size_t)(pa_end-pa_start), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+  //boot_map_region(kern_pgdir, base, ROUNDUP(size,PGSIZE), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+  
+  */
+  //map
+  boot_map_region(kern_pgdir, base, (size_t)(pa_end-pa_start), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+  //boot_map_region(kern_pgdir, base, (size_t)(pa_end-pa_start), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+  //boot_map_region(kern_pgdir, base, (size_t)ROUNDUP(size,PGSIZE), pa_start, PTE_PCD | PTE_PWT | PTE_W | PTE_P);
+  
+  // update base
+  uint32_t old_base = base;
+  base += (pa_end - pa_start);
+  return (void*)(old_base + pa_offset);
 }
 
 static uintptr_t user_mem_check_addr;
